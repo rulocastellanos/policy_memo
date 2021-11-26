@@ -1,0 +1,111 @@
+##############
+# SUAC
+##################
+
+#Limpiar el ambiente 
+rm(list=ls())
+setwd("~")
+dev.off()
+
+#Instalar paquetes 
+paquetes <- c( "cowplot", "sf")
+
+sapply(paquetes,
+       function(x) {
+         if(! x %in% rownames(installed.packages()))
+           install.packages(x)
+         require(x, character.only=T)
+       })
+
+# metro <- read_csv("Desktop/estaciones-metro.csv")
+# 
+# metro_points <- st_as_sf(metro, coords = c("stop_lon", "stop_lat" ), crs = 4326, na.fail = F)
+# 
+# metro_points_jittered <- st_jitter(metro_points, amount = .01)
+# 
+# p1 <- ggplot(metro_points ) + 
+#   geom_sf()+
+#   ggtitle("Original")
+# 
+# p2 <- ggplot(metro_points_jittered) + 
+#   geom_sf()+
+#   ggtitle("Con Ruído")
+# 
+# p3 <- ggplot() + 
+#   geom_sf(data = metro_points, color = "red")+
+#   geom_sf(data = metro_points_jittered, color = "black")+
+#   ggtitle("Ambas")
+# 
+# cowplot::plot_grid(p1, p2, p3, ncol=1)
+
+setwd("/Users/raulcastellanos/Desktop/Bases de datos /ADIP/locatel/suac")
+
+
+
+#CARGAR LA BASE 
+suac <- read_csv("inp/Folios_SUAC_Junio_2021 (1).csv", 
+                 locale = locale(encoding = "ISO-8859-1"))
+mapa_cdmx = read_sf("inp/alcaldias/Alcald¡as CDMX.shp")
+
+#MINÚSCULAS 
+suac <- suac %>%  clean_names()
+
+
+#HACER NA LOS PUNTOS QUE SALEN DEL CUADRO O DE LA CDMX 
+
+suac$longitud = suac$longitud_solicitud
+suac$latitud = suac$latitud_solicitud
+
+suac_points <- st_as_sf(suac, coords = c("longitud_solicitud", "latitud_solicitud" ), crs = 4326, na.fail = F)
+
+suac_points <- suac_points %>% mutate(
+  intersection = as.integer(st_intersects(geometry, mapa_cdmx))
+  , area = if_else(is.na(intersection), '', mapa_cdmx$NOM_ENT[intersection])
+) 
+
+#PONER JITTER (RUIDO)
+suac_points_jittered <- st_jitter(suac_points, amount = .001)
+
+
+
+#REGRESAR A UNA BASE NORMAL 
+
+suac_points_jittered_df <- fortify(suac_points_jittered)
+
+#HACER NA LOS PUNTOS QUE NO CAIGAN DENTRO DE LA CDMX 
+suac_points_jittered_df$longitud = ifelse(is.na(suac_points_jittered_df$intersection), NA, suac_points_jittered_df$longitud)
+suac_points_jittered_df$latitud = ifelse(is.na(suac_points_jittered_df$intersection), NA, suac_points_jittered_df$latitud)
+
+
+#QUITAR LAS COLUMNAS FALTANTES 
+suac_points_jittered_df$geometry = suac_points_jittered_df$intersection =  suac_points_jittered_df$area = NULL
+
+#EXPORTAR 
+write_csv(suac_points_jittered_df,
+          paste0("./out/suac_junio_2021.csv"))
+
+#Grafica alcaldia 
+
+graf_alcaldias <- suac_points_jittered_df  %>% group_by(alcaldia_solicitud) %>% 
+  summarise(total = n()) %>%  drop_na()
+
+ggplot(data= graf_alcaldias, aes(x=reorder(alcaldia_solicitud, total), y=total)) +
+  geom_bar(stat="identity", fill="#00ad42", alpha=.6, width=.4) +
+  coord_flip() +
+  xlab("") +
+  labs(title = "Total de infraccciones por Alcaldía")+
+  theme_bw()
+
+#grafica tema 
+graf_tema <- suac_points_jittered_df  %>% group_by(tema_solicitud) %>% 
+  summarise(total = n()) %>%  drop_na()
+
+ggplot(data= graf_tema, aes(x=reorder(tema_solicitud, total), y=total)) +
+  geom_bar(stat="identity", fill="#7343be", alpha=.6, width=.4) +
+  coord_flip() +
+  xlab("") +
+  labs(title = "Total por tema")+
+  theme_bw()
+
+
+
