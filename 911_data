@@ -1,6 +1,4 @@
-##############
-# SUAC
-##################
+**HOLA**
 
 #Limpiar el ambiente 
 rm(list=ls())
